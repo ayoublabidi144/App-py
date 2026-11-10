@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-⚡ MATRIX BOT — SECURE & STABLE VERSION (WITH NETWORK PROTECTION)
+⚡ MATRIX BOT — FINAL SHORT PRICED VERSION
 """
 
 import requests, time, re, json, threading, logging, sys
@@ -469,7 +469,7 @@ def oo_menu(cid):
 def oo_offers_menu(cid):
     tg_buttons(cid, "🛒 العروض المتوفرة والتفعيل:", [
         ["📶 2G (24h) - 50دج", "⚡ 10G (3 أيام) - 190دج"],
-        ["🎁 عرض 300G", "🎁 الهدية اليومية"],
+        ["🎁 300G (8h) - 300دج", "🎁 الهدية اليومية"],
         ["👻 تفعيل Snapchat", "🔙 رجوع للقائمة"]
     ])
 
@@ -580,7 +580,7 @@ def handle(cid, text):
         
         if text == "📶 2G (24h) - 50دج":      return threading.Thread(target=oo_do_activation, args=(cid, user, "2G_24H", "عرض 2G (24h) - 50دج"), daemon=True).start()
         if text == "⚡ 10G (3 أيام) - 190دج":  return threading.Thread(target=oo_do_activation, args=(cid, user, "10G_3DAYS", "عرض 10G (3 أيام) - 190دج"), daemon=True).start()
-        if text == "🎁 عرض 300G":            return threading.Thread(target=oo_do_activation, args=(cid, user, "300G_00_08", "عرض 300G"), daemon=True).start()
+        if text == "🎁 300G (8h) - 300دج":    return threading.Thread(target=oo_do_activation, args=(cid, user, "300G_00_08", "عرض 300G (8h) - 300دج"), daemon=True).start()
 
         if text == "🚪 خروج":
             oo_delete_user(cid); oo_clear_session(cid)
@@ -604,7 +604,7 @@ def polling_loop():
     try:
         _tg_session.get(f"{TELEGRAM_API}/deleteWebhook", params={"drop_pending_updates": "true"}, timeout=5)
     except Exception as e:
-        logger.warning(f"⚠️ تجاهل خطشبكة البدء: {e}")
+        logger.warning(f"⚠️ تجاهل خطأ شبكة البدء: {e}")
         
     offset = None
     while True:
