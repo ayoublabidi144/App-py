@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-⚡ MATRIX BOT — CLEAN & STABLE VERSION
+⚡ MATRIX BOT — FINAL CLEAN VERSION (NO 2G GIFT)
 """
 
 import requests, time, re, json, threading, logging, sys
@@ -490,10 +490,9 @@ def oo_menu(cid):
 
 def oo_offers_menu(cid):
     tg_buttons(cid, "🛒 العروض المتوفرة والتفعيل:", [
-        ["🎁 هدية 2جيقا مجانية", "📶 عرض 2G (24 ساعة)"],
-        ["⚡ عرض 10G (3 أيام)", "🎁 عرض 300G"],
-        ["🎁 الهدية اليومية", "👻 تفعيل Snapchat"],
-        ["🔙 رجوع للقائمة"]
+        ["📶 عرض 2G (24 ساعة)", "⚡ عرض 10G (3 أيام)"],
+        ["🎁 عرض 300G", "🎁 الهدية اليومية"],
+        ["👻 تفعيل Snapchat", "🔙 رجوع للقائمة"]
     ])
 
 def oo_do_activation(cid, user, bundle_code, name_ar):
@@ -599,7 +598,6 @@ def handle(cid, text):
 
         if text == "🛒 العروض المتوفرة":      return oo_offers_menu(cid)
         
-        if text == "🎁 هدية 2جيقا مجانية":    return threading.Thread(target=oo_do_activation, args=(cid, user, "BTL_24H_DATA_Free_2Go", "هدية 2جيقا (24 ساعة)"), daemon=True).start()
         if text == "📶 عرض 2G (24 ساعة)":     return threading.Thread(target=oo_do_activation, args=(cid, user, "2G_24H", "عرض 2G (24 ساعة)"), daemon=True).start()
         if text == "⚡ عرض 10G (3 أيام)":     return threading.Thread(target=oo_do_activation, args=(cid, user, "10G_3DAYS", "عرض 10G (3 أيام)"), daemon=True).start()
         if text == "🎁 عرض 300G":            return threading.Thread(target=oo_do_activation, args=(cid, user, "300G_00_08", "عرض 300G"), daemon=True).start()
