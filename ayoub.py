@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-⚡ MATRIX BOT — SHORT BUTTONS VERSION
+⚡ MATRIX BOT — SECURE & STABLE VERSION (WITH NETWORK PROTECTION)
 """
 
 import requests, time, re, json, threading, logging, sys
@@ -350,8 +350,6 @@ def oo_buy_cvm(msisdn, user, bundle_code):
     body_lower = body_txt.lower()
     j_res = r.get("json")
 
-    print(f"DEBUG CVM RESP -> Code: {code}, Body: {body_txt}")
-
     if code not in (200, 201):
         return {"error": "💰 الرصيد غير كافي لتفعيل العرض"}
 
@@ -367,9 +365,6 @@ def oo_buy_cvm(msisdn, user, bundle_code):
 
     if not body_txt.strip() or body_txt.strip() in ("{}", "[]"):
         return {"error": "💰 الرصيد غير كافي لتفعيل هذا العرض"}
-
-    if "success" not in body_lower and "bundle" not in body_lower and "transaction" not in body_lower:
-        return {"error": "💰 الرصيد غير كافي لتفعيل العرض"}
 
     return {"success": True}
 
@@ -387,18 +382,14 @@ def oo_apply_snapchat(msisdn, user):
     body_txt = r.get("body") or ""
     j_res = r.get("json")
     
-    print(f"DEBUG SNAP RESP -> Code: {code}, Body: {body_txt}")
-    
     if code in (200, 201):
         if isinstance(j_res, dict):
             if j_res.get("success") is False or j_res.get("status") in ("ERROR", "FAIL"):
                 return {"error": f"⚠️ {j_res.get('message', 'فشل تفعيل العرض')}"}
             if j_res.get("success") is True or j_res.get("status") in ("SUCCESS", "OK"):
                 return {"success": True}
-        
         if not body_txt.strip() or body_txt.strip() in ("{}", "[]"):
             return {"error": "❌ رفض الخادم تفعيل العرض (غير متاح لشريحتك)"}
-            
         return {"success": True}
         
     return {"error": f"💰 فشل الطلب (كود: {code})"}
@@ -424,21 +415,13 @@ def oo_claim_daily_gift(msisdn, user):
         
     token = user.get("access_token", "")
     h_play = {
-        "User-Agent": "Dart/3.11 (dart:io)",
-        "Accept-Encoding": "gzip",
-        "x-msisdn": msisdn,
-        "x-device-fingerprint": oo_new_fp(),
-        "x-nonce-id": nonce,
-        "x-chronos-id": chronos,
-        "x-platform-origin": OOREDOO_PLATFORM_ORIGIN,
-        "platform": OOREDOO_PLATFORM,
-        "x-version": OOREDOO_X_VERSION,
-        "x-signature": OOREDOO_X_SIG,
-        "x-platform-data-signature": psig,
-        "x-timestamp": ts,
-        "x-instance-id": iid,
-        "authorization": f"Bearer {token}",
-        "x-correlation-id": oo_new_corr(),
+        "User-Agent": "Dart/3.11 (dart:io)", "Accept-Encoding": "gzip",
+        "x-msisdn": msisdn, "x-device-fingerprint": oo_new_fp(),
+        "x-nonce-id": nonce, "x-chronos-id": chronos,
+        "x-platform-origin": OOREDOO_PLATFORM_ORIGIN, "platform": OOREDOO_PLATFORM,
+        "x-version": OOREDOO_X_VERSION, "x-signature": OOREDOO_X_SIG,
+        "x-platform-data-signature": psig, "x-timestamp": ts, "x-instance-id": iid,
+        "authorization": f"Bearer {token}", "x-correlation-id": oo_new_corr(),
     }
     
     r_play = oo_http("GET", f"{OOREDOO_BFF}/gamification/play", h_play, timeout=8)
@@ -450,20 +433,15 @@ def oo_claim_daily_gift(msisdn, user):
     body_lower = body_txt.lower()
     j_res = r_play.get("json")
     
-    print(f"DEBUG DAILY GIFT RESP -> Code: {code}, Body: {body_txt}")
-    
     if code in (200, 201):
         if isinstance(j_res, dict):
             if j_res.get("success") is False or str(j_res.get("status", "")).upper() in ("ERROR", "FAIL", "ALREADY_PLAYED"):
                 return {"error": "⚠️ لقد استفدت من الهدية اليومية مسبقاً اليوم."}
             return {"success": True, "data": j_res}
-            
         if "already" in body_lower or "deja" in body_lower or "played" in body_lower:
             return {"error": "⚠️ لقد استفدت من الهدية اليومية مسبقاً اليوم."}
-            
         if not body_txt.strip() or body_txt.strip() in ("{}", "[]"):
             return {"error": "❌ لم يتم العثور على هدية متاحة حالياً."}
-            
         return {"success": True}
         
     return {"error": f"💰 فشل استلام الهدية (كود: {code})"}
@@ -597,12 +575,12 @@ def handle(cid, text):
             return tg_send(cid, "👋 مرحباً بك!\nأرسل رقم أوريدو (05XXXXXXXX):")
 
         if text == "🛒 العروض المتوفرة":      return oo_offers_menu(cid)
+        if text == "🎁 الهدية اليومية":      return threading.Thread(target=oo_do_daily_gift, args=(cid, user), daemon=True).start()
+        if text == "👻 تفعيل Snapchat":      return threading.Thread(target=oo_do_snapchat, args=(cid, user), daemon=True).start()
         
         if text == "📶 2G (24h) - 50دج":      return threading.Thread(target=oo_do_activation, args=(cid, user, "2G_24H", "عرض 2G (24h) - 50دج"), daemon=True).start()
         if text == "⚡ 10G (3 أيام) - 190دج":  return threading.Thread(target=oo_do_activation, args=(cid, user, "10G_3DAYS", "عرض 10G (3 أيام) - 190دج"), daemon=True).start()
         if text == "🎁 عرض 300G":            return threading.Thread(target=oo_do_activation, args=(cid, user, "300G_00_08", "عرض 300G"), daemon=True).start()
-        if text == "👻 تفعيل Snapchat":      return threading.Thread(target=oo_do_snapchat, args=(cid, user), daemon=True).start()
-        if text == "🎁 الهدية اليومية":      return threading.Thread(target=oo_do_daily_gift, args=(cid, user), daemon=True).start()
 
         if text == "🚪 خروج":
             oo_delete_user(cid); oo_clear_session(cid)
@@ -612,6 +590,7 @@ def handle(cid, text):
         oo_menu(cid)
     except Exception as e:
         logger.exception(f"handle error: {e}")
+        oo_menu(cid)
 
 def get_updates(offset=None):
     try:
@@ -622,7 +601,11 @@ def get_updates(offset=None):
 
 def polling_loop():
     logger.info("🚀 Bot Started Successfully...")
-    _tg_session.get(f"{TELEGRAM_API}/deleteWebhook", params={"drop_pending_updates": "true"})
+    try:
+        _tg_session.get(f"{TELEGRAM_API}/deleteWebhook", params={"drop_pending_updates": "true"}, timeout=5)
+    except Exception as e:
+        logger.warning(f"⚠️ تجاهل خطشبكة البدء: {e}")
+        
     offset = None
     while True:
         try:
@@ -638,7 +621,9 @@ def polling_loop():
                                 oo_save_user(cid, {"first_name": frm.get("first_name"),
                                                    "username": frm.get("username")})
                             threading.Thread(target=handle, args=(cid, text), daemon=True).start()
-        except: time.sleep(1)
+        except Exception as e:
+            logger.debug(f"network error: {e}")
+            time.sleep(3)
 
 def run():
     _load_from_disk()
