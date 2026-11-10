@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-⚡ MATRIX BOT — FINAL CLEAN VERSION (NO 2G GIFT)
+⚡ MATRIX BOT — FULL CLEAN VERSION
 """
 
 import requests, time, re, json, threading, logging, sys
