@@ -1,7 +1,7 @@
-#!/usr/init/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-⚡ MATRIX BOT — DAILY GIFT (GAMIFICATION) & SNAPCHAT SUPPORTED
+⚡ MATRIX BOT — STABLE COMPLETE VERSION
 """
 
 import requests, time, re, json, threading, logging, sys
@@ -409,7 +409,6 @@ def oo_claim_daily_gift(msisdn, user):
     dev = oo_get_device(None)
     iid, psig, ts = dev["instance_id"], dev["plat_sig"], oo_now_ms()
     
-    # 1. طلب الـ Checkpoint للحصول على Nonce و Chronos خاص بالهدية اليومية
     h3 = oo_base_h(msisdn, oo_new_fp(), oo_new_corr(), ts, iid, psig)
     h3["content-type"] = "application/json; charset=utf-8"
     h3["x-native-integrity-token"] = OOREDOO_INTEGRITY_1
@@ -425,11 +424,232 @@ def oo_claim_daily_gift(msisdn, user):
     if not nonce or not chronos:
         return {"error": "فشل استخراج رموز التحقق للهدية اليومية"}
         
-    # 2. الطلب الفعلي للحصول على الهدية
     token = user.get("access_token", "")
     h_play = {
         "User-Agent": "Dart/3.11 (dart:io)",
         "Accept-Encoding": "gzip",
         "x-msisdn": msisdn,
         "x-device-fingerprint": oo_new_fp(),
-        "x-nonce-id":
+        "x-nonce-id": nonce,
+        "x-chronos-id": chronos,
+        "x-platform-origin": OOREDOO_PLATFORM_ORIGIN,
+        "platform": OOREDOO_PLATFORM,
+        "x-version": OOREDOO_X_VERSION,
+        "x-signature": OOREDOO_X_SIG,
+        "x-platform-data-signature": psig,
+        "x-timestamp": ts,
+        "x-instance-id": iid,
+        "authorization": f"Bearer {token}",
+        "x-correlation-id": oo_new_corr(),
+    }
+    
+    r_play = oo_http("GET", f"{OOREDOO_BFF}/gamification/play", h_play, timeout=8)
+    if not r_play:
+        return {"error": "فشل الاتصال بخادم الهدية اليومية"}
+        
+    code = r_play["code"]
+    body_txt = r_play.get("body") or ""
+    body_lower = body_txt.lower()
+    j_res = r_play.get("json")
+    
+    print(f"DEBUG DAILY GIFT RESP -> Code: {code}, Body: {body_txt}")
+    
+    if code in (200, 201):
+        if isinstance(j_res, dict):
+            if j_res.get("success") is False or str(j_res.get("status", "")).upper() in ("ERROR", "FAIL", "ALREADY_PLAYED"):
+                return {"error": "⚠️ لقد استفدت من الهدية اليومية مسبقاً اليوم."}
+            return {"success": True, "data": j_res}
+            
+        if "already" in body_lower or "deja" in body_lower or "played" in body_lower:
+            return {"error": "⚠️ لقد استفدت من الهدية اليومية مسبقاً اليوم."}
+            
+        if not body_txt.strip() or body_txt.strip() in ("{}", "[]"):
+            return {"error": "❌ لم يتم العثور على هدية متاحة حالياً."}
+            
+        return {"success": True}
+        
+    return {"error": f"💰 فشل استلام الهدية (كود: {code})"}
+
+def tg_request(method, **kwargs):
+    try:
+        r = _tg_session.post(f"{TELEGRAM_API}/{method}", json=kwargs, timeout=5)
+        return r.json()
+    except: return None
+
+def tg_send(cid, text, keyboard=None):
+    payload = {"chat_id": cid, "text": text, "parse_mode": "HTML"}
+    if keyboard: payload["reply_markup"] = {"keyboard": keyboard, "resize_keyboard": True}
+    return tg_request("sendMessage", **payload)
+
+def tg_buttons(cid, text, rows):
+    return tg_send(cid, text, [[{"text": b} for b in row] for row in rows])
+
+def oo_menu(cid):
+    tg_buttons(cid, "اختر من القائمة الرئيسية 👇🏻", [
+        ["🛒 العروض المتوفرة", "🎁 الهدية اليومية"],
+        ["👻 تفعيل Snapchat", "🚪 خروج"]
+    ])
+
+def oo_offers_menu(cid):
+    tg_buttons(cid, "🛒 العروض المتوفرة والتفعيل:", [
+        ["🎁 هدية 2جيقا مجانية", "📶 عرض 2G (24 ساعة)"],
+        ["⚡ عرض 10G (3 أيام)", "🎁 عرض 300G"],
+        ["🎁 الهدية اليومية", "👻 تفعيل Snapchat"],
+        ["🔙 رجوع للقائمة"]
+    ])
+
+def oo_do_activation(cid, user, bundle_code, name_ar):
+    m = user.get("msisdn", "")
+    tg_send(cid, f"⏳ جاري تفعيل {name_ar}...")
+    res = oo_buy_cvm(m, user, bundle_code)
+    if res.get("success"):
+        tg_buttons(cid, f"🎉 <b>تم تفعيل {name_ar} بنجاح 🥳</b>\n📱 <b>الرقم:</b> <code>{mask_phone(m)}</code>", [["🔙 رجوع للقائمة"]])
+    else:
+        tg_buttons(cid, f"❌ <b>فشل التفعيل:</b>\n{res.get('error')}", [["🔙 رجوع للقائمة"]])
+
+def oo_do_snapchat(cid, user):
+    m = user.get("msisdn", "")
+    tg_send(cid, f"⏳ جاري تفعيل عرض Snapchat المجاني...")
+    res = oo_apply_snapchat(m, user)
+    if res.get("success"):
+        tg_buttons(cid, f"🎉 <b>تم تفعيل Snapchat بنجاح 🥳</b>\n📱 <b>الرقم:</b> <code>{mask_phone(m)}</code>", [["🔙 رجوع للقائمة"]])
+    else:
+        tg_buttons(cid, f"❌ <b>فشل تفعيل Snapchat:</b>\n{res.get('error')}", [["🔙 رجوع للقائمة"]])
+
+def oo_do_daily_gift(cid, user):
+    m = user.get("msisdn", "")
+    tg_send(cid, f"⏳ جاري جلب الهدية اليومية...")
+    res = oo_call_refresh(cid, oo_claim_daily_gift, m, user)
+    if isinstance(res, dict) and res.get("success"):
+        tg_buttons(cid, f"🎉 <b>مبروك! تم استلام الهدية اليومية بنجاح 🎁</b>\n📱 <b>الرقم:</b> <code>{mask_phone(m)}</code>", [["🔙 رجوع للقائمة"]])
+    else:
+        err = res.get('error') if isinstance(res, dict) else "فشل العملية"
+        tg_buttons(cid, f"❌ <b>فشل استلام الهدية:</b>\n{err}", [["🔙 رجوع للقائمة"]])
+
+def handle(cid, text):
+    try:
+        text = text.strip()
+        sess  = oo_get_session(cid)
+        state = sess.get("state", "")
+        user  = oo_get_user(cid)
+
+        if text == "/start":
+            oo_clear_session(cid)
+            if user and user.get("access_token") and oo_check_session(user, cid):
+                return oo_menu(cid)
+            oo_set_session(cid, {"state": "awaiting_phone"})
+            return tg_send(cid, "👋 مرحباً بك في بوت أورييدو الاحترافي 🇩🇿\nأرسل رقم هاتف أوريدو الخاص بك (05XXXXXXXX) 📱:")
+
+        if state == "awaiting_phone":
+            dg = "".join(c for c in text if c.isdigit())
+            if not re.match(r"^05\d{8}$", dg):
+                return tg_send(cid, "❌ رقم غير صحيح. أرسل رقماً يبدأ بـ 05 (مثال: 0550123456):")
+            msisdn = "213" + dg[1:]
+            wait = _check_otp_cooldown(cid)
+            if wait > 0:
+                return tg_send(cid, f"⚠️ <b>الرجاء الانتظار {wait} ثانية للحماية من حظر الـ IP.</b>", parse_mode="HTML")
+            oo_set_session(cid, {"state": "awaiting_otp", "msisdn": msisdn})
+            tg_buttons(cid, "✅ تم استلام الرقم!\n📩 جاري إرسال رمز التحقق (OTP)...", [["📱 تغيير الرقم"]])
+            
+            def _bg():
+                res = oo_send_otp(msisdn)
+                if res.get("ok"):
+                    tg_buttons(cid, "✅ تم إرسال OTP بنجاح.\nأرسل الرمز المكون من 6 أرقام هنا:", [["🔄 تجديد الرمز", "📱 تغيير الرقم"]])
+                else:
+                    tg_buttons(cid, "⚠️ فشل إرسال الرمز، تأكد من الرقم أو حاول لاحقاً.", [["🔄 تجديد الرمز", "📱 تغيير الرقم"]])
+            threading.Thread(target=_bg, daemon=True).start()
+            return
+
+        if state == "awaiting_otp":
+            if text == "🔄 تجديد الرمز":
+                msisdn = sess.get("msisdn")
+                if not msisdn:
+                    oo_set_session(cid, {"state": "awaiting_phone"})
+                    return tg_send(cid, "📱 أرسل رقم هاتفك أولاً:")
+                tg_send(cid, "⏳ جاري إعادة إرسال الرمز...")
+                def _bg2():
+                    res = oo_send_otp(msisdn)
+                    if res.get("ok"):
+                        tg_buttons(cid, "✅ تم إعادة إرسال الرمز.", [["🔄 تجديد الرمز", "📱 تغيير الرقم"]])
+                    else:
+                        tg_buttons(cid, "⚠️ فشل إعادة الإرسال، انتظر قليلاً.", [["🔄 تجديد الرمز", "📱 تغيير الرقم"]])
+                threading.Thread(target=_bg2, daemon=True).start()
+                return
+            if text == "📱 تغيير الرقم":
+                oo_clear_session(cid)
+                oo_set_session(cid, {"state": "awaiting_phone"})
+                return tg_send(cid, "📱 أرسل رقم هاتفك الجديد:")
+            
+            if not text.isdigit() or len(text) != 6:
+                return tg_buttons(cid, "❌ رمز OTP يجب أن يكون 6 أرقام صحيحة.", [["🔄 تجديد الرمز", "📱 تغيير الرقم"]])
+            
+            dev = oo_get_device(cid)
+            res = oo_verify_otp(sess.get("msisdn"), text, dev)
+            if res == "wrong_otp":
+                return tg_buttons(cid, "❌ الرمز خاطئ. تأكد وأعد إرساله:", [["🔄 تجديد الرمز", "📱 تغيير الرقم"]])
+            if not res:
+                return tg_send(cid, "❌ عذراً، سيرفر أورييدو غير متاح حالياً.")
+            
+            oo_save_user(cid, {"msisdn": sess.get("msisdn"), **res})
+            oo_clear_session(cid)
+            tg_send(cid, "🎉 تم تسجيل الدخول وحفظ الجلسة بنجاح!")
+            return oo_menu(cid)
+
+        if not user or not user.get("access_token"):
+            oo_set_session(cid, {"state": "awaiting_phone"})
+            return tg_send(cid, "👋 مرحباً بك!\nأرسل رقم أوريدو (05XXXXXXXX):")
+
+        if text == "🛒 العروض المتوفرة":      return oo_offers_menu(cid)
+        
+        if text == "🎁 هدية 2جيقا مجانية":    return threading.Thread(target=oo_do_activation, args=(cid, user, "BTL_24H_DATA_Free_2Go", "هدية 2جيقا (24 ساعة)"), daemon=True).start()
+        if text == "📶 عرض 2G (24 ساعة)":     return threading.Thread(target=oo_do_activation, args=(cid, user, "2G_24H", "عرض 2G (24 ساعة)"), daemon=True).start()
+        if text == "⚡ عرض 10G (3 أيام)":     return threading.Thread(target=oo_do_activation, args=(cid, user, "10G_3DAYS", "عرض 10G (3 أيام)"), daemon=True).start()
+        if text == "🎁 عرض 300G":            return threading.Thread(target=oo_do_activation, args=(cid, user, "300G_00_08", "عرض 300G"), daemon=True).start()
+        if text == "👻 تفعيل Snapchat":      return threading.Thread(target=oo_do_snapchat, args=(cid, user), daemon=True).start()
+        if text == "🎁 الهدية اليومية":      return threading.Thread(target=oo_do_daily_gift, args=(cid, user), daemon=True).start()
+
+        if text == "🚪 خروج":
+            oo_delete_user(cid); oo_clear_session(cid)
+            return tg_send(cid, "✅ تم تسجيل الخروج بنجاح. أرسل /start للبدء من جديد.")
+        if text == "🔙 رجوع للقائمة":         return oo_menu(cid)
+        
+        oo_menu(cid)
+    except Exception as e:
+        logger.exception(f"handle error: {e}")
+
+def get_updates(offset=None):
+    try:
+        r = _tg_session.get(f"{TELEGRAM_API}/getUpdates",
+                            params={"timeout": 15, "offset": offset}, timeout=(5, 20))
+        return r.json()
+    except: return None
+
+def polling_loop():
+    logger.info("🚀 Bot Started Successfully (Stable Version)...")
+    _tg_session.get(f"{TELEGRAM_API}/deleteWebhook", params={"drop_pending_updates": "true"})
+    offset = None
+    while True:
+        try:
+            data = get_updates(offset)
+            if data and data.get("ok"):
+                for upd in data.get("result", []):
+                    offset = upd["update_id"] + 1
+                    if msg := upd.get("message"):
+                        cid  = msg.get("chat", {}).get("id")
+                        text = msg.get("text", "").strip()
+                        if cid and text:
+                            if frm := msg.get("from"):
+                                oo_save_user(cid, {"first_name": frm.get("first_name"),
+                                                   "username": frm.get("username")})
+                            threading.Thread(target=handle, args=(cid, text), daemon=True).start()
+        except: time.sleep(1)
+
+def run():
+    _load_from_disk()
+    polling_loop()
+
+if __name__ == "__main__":
+    try:
+        run()
+    except KeyboardInterrupt:
+        with _lock: _do_save()
