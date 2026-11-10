@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-⚡ MATRIX BOT — STABLE COMPLETE VERSION
+⚡ MATRIX BOT — CLEAN & STABLE VERSION
 """
 
 import requests, time, re, json, threading, logging, sys
@@ -19,8 +19,6 @@ logger = logging.getLogger("matrix_bot")
 
 TELEGRAM_BOT_TOKEN = "9153869404:AAGI0mkSrZKoF7Ukp6nkKFHyyhZwvtutxHk"
 TELEGRAM_API  = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
-ADMIN_ID      = 0
-LOG_CHANNEL_ID = "-000000000"
 
 OOREDOO_BFF   = "https://apis.ooredoo.dz/api/ooredoo-bff"
 OOREDOO_AUTH  = "https://apis.ooredoo.dz/api/auth/realms/myooredoo/protocol/openid-connect/token"
@@ -625,7 +623,7 @@ def get_updates(offset=None):
     except: return None
 
 def polling_loop():
-    logger.info("🚀 Bot Started Successfully (Stable Version)...")
+    logger.info("🚀 Bot Started Successfully...")
     _tg_session.get(f"{TELEGRAM_API}/deleteWebhook", params={"drop_pending_updates": "true"})
     offset = None
     while True:
