@@ -1,7 +1,7 @@
-#!/usr/init/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-⚡ MATRIX BOT — FINAL SECURE VERSION WITH FLEXIBLE CVM PURCHASE
+⚡ MATRIX BOT — FINAL SECURE VERSION WITH STRICT CVM VALIDATION
 """
 
 import requests, time, re, json, threading, logging, sys
@@ -350,21 +350,24 @@ def oo_buy_cvm(msisdn, user, bundle_code):
     body_lower = body_txt.lower()
     j_res = r.get("json")
 
-    # معالجة أكواد الاستجابة الناجحة
-    if code in (200, 201):
-        if isinstance(j_res, dict):
-            if j_res.get("success") is False or str(j_res.get("status", "")).upper() in ("ERROR", "FAIL", "FAILED", "REJECTED"):
-                return {"error": f"⚠️ {j_res.get('message', 'فشل تفعيل العرض')}"}
-        return {"success": True}
-
-    if code == 409:
-        return {"error": "⚠️ العرض مفعل مسبقاً أو يتعارض مع باقة أخرى نشطة."}
-
     reject_keywords = ["insufficient", "balance", "solde", "رصيد", "not enough", "error", "fail", "failed", "مرفوض", "غير كافي", "expired", "invalid", "unavailable", "denied", "amount"]
     if any(w in body_lower for w in reject_keywords):
         return {"error": "💰 الرصيد غير كافي لتفعيل العرض"}
 
-    return {"error": f"❌ فشل التفعيل (كود: {code})"}
+    if code == 409:
+        return {"error": "⚠️ العرض مفعل مسبقاً أو يتعارض مع باقة أخرى نشطة."}
+
+    if code not in (200, 201):
+        return {"error": f"❌ فشل التفعيل (كود: {code})"}
+
+    if isinstance(j_res, dict):
+        if j_res.get("success") is False or str(j_res.get("status", "")).upper() in ("ERROR", "FAIL", "FAILED", "REJECTED"):
+            return {"error": f"⚠️ {j_res.get('message', 'فشل تفعيل العرض من السيرفر')}"}
+
+    if not body_txt.strip() or body_txt.strip() in ("{}", "[]"):
+        return {"error": "❌ رفض الخادم تفعيل العرض (تأكد من توفر العرض لشريحتك)"}
+
+    return {"success": True}
 
 def oo_apply_snapchat(msisdn, user):
     h = oo_authed_h(msisdn, user.get("access_token"), {
