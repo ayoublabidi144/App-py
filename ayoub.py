@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-⚡ MATRIX BOT — FINAL FORCED ACTIVATION VERSION
+⚡ MATRIX BOT — CLEAN VERSION (1G 20DA & SNAPCHAT ONLY)
 """
 
 import requests, time, re, json, threading, logging, sys
@@ -345,21 +345,20 @@ def oo_buy_cvm(msisdn, user, bundle_code):
     r = oo_http("POST", f"{OOREDOO_BFF}/cvm/dynamic-bundle-purchase", h, json.dumps(payload), timeout=10)
     if not r: return {"error": "فشل الاتصال بالخادم"}
     
-    code = r["code"]
-    body_txt = r.get("body") or ""
-    body_lower = body_txt.lower()
+    code = r.get("code")
+    body_txt = (r.get("body") or "").strip()
+    j_res = r.get("json")
 
-    reject_keywords = ["insufficient", "balance", "solde", "رصيد", "not enough", "غير كافي"]
-    if any(w in body_lower for w in reject_keywords):
-        return {"error": "💰 الرصيد غير كافي لتفعيل العرض"}
-
-    if code == 409:
-        return {"error": "⚠️ العرض مفعل مسبقاً أو يتعارض مع باقة أخرى."}
+    debug_info = f"<b>Code:</b> <code>{code}</code>\n"
+    if j_res:
+        debug_info += f"<b>JSON:</b>\n<code>{json.dumps(j_res, indent=2, ensure_ascii=False)[:350]}</code>"
+    else:
+        debug_info += f"<b>Body:</b>\n<code>{body_txt[:300] if body_txt else 'Empty Body'}</code>"
 
     if code in (200, 201):
-        return {"success": True}
-
-    return {"error": f"❌ رفض الخادم (كود: {code})"}
+        return {"success": True, "debug": debug_info}
+    else:
+        return {"error": f"فشل التفعيل (HTTP Status: {code})\n\n{debug_info}"}
 
 def oo_apply_snapchat(msisdn, user):
     h = oo_authed_h(msisdn, user.get("access_token"), {
@@ -372,10 +371,19 @@ def oo_apply_snapchat(msisdn, user):
     if not r: return {"error": "فشل الاتصال بالخادم"}
     
     code = r["code"]
+    body_txt = (r.get("body") or "").strip()
+    j_res = r.get("json")
+    
+    debug_info = f"<b>Code:</b> <code>{code}</code>\n"
+    if j_res:
+        debug_info += f"<b>JSON:</b>\n<code>{json.dumps(j_res, indent=2, ensure_ascii=False)[:350]}</code>"
+    else:
+        debug_info += f"<b>Body:</b>\n<code>{body_txt[:300] if body_txt else 'Empty Body'}</code>"
+
     if code in (200, 201):
-        return {"success": True}
+        return {"success": True, "debug": debug_info}
         
-    return {"error": f"💰 فشل الطلب (كود: {code})"}
+    return {"error": f"💰 فشل الطلب (كود: {code})\n\n{debug_info}"}
 
 def oo_claim_daily_gift(msisdn, user):
     dev = oo_get_device(None)
@@ -459,18 +467,16 @@ def tg_buttons(cid, text, rows):
 
 def oo_menu(cid):
     tg_buttons(cid, "اختر من القائمة الرئيسية 👇🏻", [
-        ["🛒 العروض المتوفرة", "🎁 الهدية اليومية"],
-        ["🎁 التحقق من الصناديق", "📦 فتح الصندوق"],
-        ["👻 تفعيل Snapchat", "🚪 خروج"]
+        ["📶 1G - 20DA", "👻 تفعيل Snapchat"],
+        ["🎁 الهدية اليومية", "🎁 التحقق من الصناديق"],
+        ["📦 فتح الصندوق", "🚪 خروج"]
     ])
 
 def oo_offers_menu(cid):
     tg_buttons(cid, "🛒 العروض المتوفرة والتفعيل:", [
-        ["📶 2G (24h) - 50دج", "⚡ 10G (3 أيام) - 190دج"],
-        ["🎁 300G (8h) - 300دج", "📶 1G - 20دج"],
+        ["📶 1G - 20DA", "👻 تفعيل Snapchat"],
         ["🎁 الهدية اليومية", "🎁 التحقق من الصناديق"],
-        ["📦 فتح الصندوق", "👻 تفعيل Snapchat"],
-        ["🔙 رجوع للقائمة"]
+        ["📦 فتح الصندوق", "🔙 رجوع للقائمة"]
     ])
 
 def oo_do_activation(cid, user, bundle_code, name_ar):
@@ -478,7 +484,8 @@ def oo_do_activation(cid, user, bundle_code, name_ar):
     tg_send(cid, f"⏳ جاري تفعيل {name_ar}...")
     res = oo_buy_cvm(m, user, bundle_code)
     if res.get("success"):
-        tg_buttons(cid, f"🎉 <b>تم تفعيل {name_ar} بنجاح 🥳</b>\n📱 <b>الرقم:</b> <code>{mask_phone(m)}</code>", [["🔙 رجوع للقائمة"]])
+        dbg = res.get("debug", "")
+        tg_buttons(cid, f"🎉 <b>نتيجة الطلب ({name_ar}):</b>\n📱 <b>الرقم:</b> <code>{mask_phone(m)}</code>\n\n🔍 <b>تفاصيل الاستجابة:</b>\n{dbg}", [["🔙 رجوع للقائمة"]])
     else:
         tg_buttons(cid, f"❌ <b>فشل التفعيل:</b>\n{res.get('error')}", [["🔙 رجوع للقائمة"]])
 
@@ -487,7 +494,8 @@ def oo_do_snapchat(cid, user):
     tg_send(cid, f"⏳ جاري تفعيل عرض Snapchat المجاني...")
     res = oo_apply_snapchat(m, user)
     if res.get("success"):
-        tg_buttons(cid, f"🎉 <b>تم تفعيل Snapchat بنجاح 🥳</b>\n📱 <b>الرقم:</b> <code>{mask_phone(m)}</code>", [["🔙 رجوع للقائمة"]])
+        dbg = res.get("debug", "")
+        tg_buttons(cid, f"🎉 <b>تم تفعيل Snapchat بنجاح 🥳</b>\n📱 <b>الرقم:</b> <code>{mask_phone(m)}</code>\n\n🔍 <b>تفاصيل الاستجابة:</b>\n{dbg}", [["🔙 رجوع للقائمة"]])
     else:
         tg_buttons(cid, f"❌ <b>فشل تفعيل Snapchat:</b>\n{res.get('error')}", [["🔙 رجوع للقائمة"]])
 
@@ -613,10 +621,7 @@ def handle(cid, text):
         if text == "📦 فتح الصندوق":         return threading.Thread(target=oo_do_redeem_box, args=(cid, user), daemon=True).start()
         if text == "👻 تفعيل Snapchat":      return threading.Thread(target=oo_do_snapchat, args=(cid, user), daemon=True).start()
         
-        if text == "📶 2G (24h) - 50دج":      return threading.Thread(target=oo_do_activation, args=(cid, user, "2G_24H", "عرض 2G (24h) - 50دج"), daemon=True).start()
-        if text == "⚡ 10G (3 أيام) - 190دج":  return threading.Thread(target=oo_do_activation, args=(cid, user, "10G_3DAYS", "عرض 10G (3 أيام) - 190دج"), daemon=True).start()
-        if text == "🎁 300G (8h) - 300دج":    return threading.Thread(target=oo_do_activation, args=(cid, user, "300G_00_08", "عرض 300G (8h) - 300دج"), daemon=True).start()
-        if text == "📶 1G - 20دج":           return threading.Thread(target=oo_do_activation, args=(cid, user, "1G_20DA", "عرض 1G - 20دج"), daemon=True).start()
+        if text == "📶 1G - 20DA":           return threading.Thread(target=oo_do_activation, args=(cid, user, "1G_20DA", "عرض 1G - 20DA"), daemon=True).start()
 
         if text == "🚪 خروج":
             oo_delete_user(cid); oo_clear_session(cid)
