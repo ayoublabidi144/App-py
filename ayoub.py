@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-⚡ MATRIX BOT — FINAL VERSION WITH POWER SNAKE & SHORT BUTTONS
+⚡ MATRIX BOT — FINAL SECURE VERSION WITH 1G & POWER SNAKE
 """
 
 import requests, time, re, json, threading, logging, sys
@@ -446,7 +446,6 @@ def oo_claim_daily_gift(msisdn, user):
         
     return {"error": f"💰 فشل استلام الهدية (كود: {code})"}
 
-# دوال الصناديق الجديدة (Power Snake Boxes)
 def oo_check_power_snake_boxes(msisdn, user):
     h = oo_authed_h(msisdn, user.get("access_token"), {
         "tok_timestamp": user.get("tok_timestamp"),
@@ -539,7 +538,6 @@ def oo_do_check_boxes(cid, user):
 def oo_do_redeem_box(cid, user):
     m = user.get("msisdn", "")
     tg_send(cid, "⏳ جاري محاولة فتح الصندوق واستلام الهدية...")
-    # هنا كمثال نبحث أولاً عن ID الصندوق المتاح ثم نفتحه، أو نستخدم معرف افتراضي إن وجد
     check = oo_call_refresh(cid, oo_check_power_snake_boxes, m, user)
     if isinstance(check, dict) and check.get("success"):
         j_data = check.get("json")
@@ -552,7 +550,6 @@ def oo_do_redeem_box(cid, user):
                 box_id = items[0].get("id") or items[0].get("uuid")
         
         if not box_id:
-            # إذا لم يتم العثور على ID محدد، نرسل طلب عام أو نعلم المستخدم
             box_id = "default"
         
         res = oo_call_refresh(cid, oo_redeem_power_snake_box, m, user, box_id)
