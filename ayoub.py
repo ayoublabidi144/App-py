@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-⚡ MATRIX BOT — FINAL SECURE VERSION WITH STRICT CVM VALIDATION
+⚡ MATRIX BOT — FINAL FORCED ACTIVATION VERSION
 """
 
 import requests, time, re, json, threading, logging, sys
@@ -348,26 +348,18 @@ def oo_buy_cvm(msisdn, user, bundle_code):
     code = r["code"]
     body_txt = r.get("body") or ""
     body_lower = body_txt.lower()
-    j_res = r.get("json")
 
-    reject_keywords = ["insufficient", "balance", "solde", "رصيد", "not enough", "error", "fail", "failed", "مرفوض", "غير كافي", "expired", "invalid", "unavailable", "denied", "amount"]
+    reject_keywords = ["insufficient", "balance", "solde", "رصيد", "not enough", "غير كافي"]
     if any(w in body_lower for w in reject_keywords):
         return {"error": "💰 الرصيد غير كافي لتفعيل العرض"}
 
     if code == 409:
-        return {"error": "⚠️ العرض مفعل مسبقاً أو يتعارض مع باقة أخرى نشطة."}
+        return {"error": "⚠️ العرض مفعل مسبقاً أو يتعارض مع باقة أخرى."}
 
-    if code not in (200, 201):
-        return {"error": f"❌ فشل التفعيل (كود: {code})"}
+    if code in (200, 201):
+        return {"success": True}
 
-    if isinstance(j_res, dict):
-        if j_res.get("success") is False or str(j_res.get("status", "")).upper() in ("ERROR", "FAIL", "FAILED", "REJECTED"):
-            return {"error": f"⚠️ {j_res.get('message', 'فشل تفعيل العرض من السيرفر')}"}
-
-    if not body_txt.strip() or body_txt.strip() in ("{}", "[]"):
-        return {"error": "❌ رفض الخادم تفعيل العرض (تأكد من توفر العرض لشريحتك)"}
-
-    return {"success": True}
+    return {"error": f"❌ رفض الخادم (كود: {code})"}
 
 def oo_apply_snapchat(msisdn, user):
     h = oo_authed_h(msisdn, user.get("access_token"), {
@@ -380,17 +372,7 @@ def oo_apply_snapchat(msisdn, user):
     if not r: return {"error": "فشل الاتصال بالخادم"}
     
     code = r["code"]
-    body_txt = r.get("body") or ""
-    j_res = r.get("json")
-    
     if code in (200, 201):
-        if isinstance(j_res, dict):
-            if j_res.get("success") is False or j_res.get("status") in ("ERROR", "FAIL"):
-                return {"error": f"⚠️ {j_res.get('message', 'فشل تفعيل العرض')}"}
-            if j_res.get("success") is True or j_res.get("status") in ("SUCCESS", "OK"):
-                return {"success": True}
-        if not body_txt.strip() or body_txt.strip() in ("{}", "[]"):
-            return {"error": "❌ رفض الخادم تفعيل العرض (غير متاح لشريحتك)"}
         return {"success": True}
         
     return {"error": f"💰 فشل الطلب (كود: {code})"}
@@ -432,17 +414,10 @@ def oo_claim_daily_gift(msisdn, user):
     code = r_play["code"]
     body_txt = r_play.get("body") or ""
     body_lower = body_txt.lower()
-    j_res = r_play.get("json")
     
     if code in (200, 201):
-        if isinstance(j_res, dict):
-            if j_res.get("success") is False or str(j_res.get("status", "")).upper() in ("ERROR", "FAIL", "ALREADY_PLAYED"):
-                return {"error": "⚠️ لقد استفدت من الهدية اليومية مسبقاً اليوم."}
-            return {"success": True, "data": j_res}
         if "already" in body_lower or "deja" in body_lower or "played" in body_lower:
             return {"error": "⚠️ لقد استفدت من الهدية اليومية مسبقاً اليوم."}
-        if not body_txt.strip() or body_txt.strip() in ("{}", "[]"):
-            return {"error": "❌ لم يتم العثور على هدية متاحة حالياً."}
         return {"success": True}
         
     return {"error": f"💰 فشل استلام الهدية (كود: {code})"}
