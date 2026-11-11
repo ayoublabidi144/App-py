@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-⚡ MATRIX BOT — FINAL SHORT PRICED VERSION
+⚡ MATRIX BOT — FINAL VERSION WITH POWER SNAKE & SHORT BUTTONS
 """
 
 import requests, time, re, json, threading, logging, sys
@@ -446,6 +446,28 @@ def oo_claim_daily_gift(msisdn, user):
         
     return {"error": f"💰 فشل استلام الهدية (كود: {code})"}
 
+# دوال الصناديق الجديدة (Power Snake Boxes)
+def oo_check_power_snake_boxes(msisdn, user):
+    h = oo_authed_h(msisdn, user.get("access_token"), {
+        "tok_timestamp": user.get("tok_timestamp"),
+        "tok_instance_id": user.get("tok_instance_id"),
+        "tok_plat_sig": user.get("tok_plat_sig")})
+    r = oo_http("GET", f"{OOREDOO_BFF}/gamification/power-snake?status=AVAILABLE", h, timeout=10)
+    if not r or r["code"] not in (200, 201):
+        return {"error": "فشل التحقق من الصناديق المتاحة"}
+    return {"success": True, "json": r.get("json")}
+
+def oo_redeem_power_snake_box(msisdn, user, box_id):
+    h = oo_authed_h(msisdn, user.get("access_token"), {
+        "tok_timestamp": user.get("tok_timestamp"),
+        "tok_instance_id": user.get("tok_instance_id"),
+        "tok_plat_sig": user.get("tok_plat_sig")})
+    h["content-type"] = "application/json; charset=utf-8"
+    r = oo_http("POST", f"{OOREDOO_BFF}/gamification/power-snake/{box_id}/redeem", h, "{}", timeout=10)
+    if not r or r["code"] not in (200, 201):
+        return {"error": "فشل فتح الصندوق أو تم فتحه مسبقاً"}
+    return {"success": True, "json": r.get("json")}
+
 def tg_request(method, **kwargs):
     try:
         r = _tg_session.post(f"{TELEGRAM_API}/{method}", json=kwargs, timeout=5)
@@ -463,14 +485,17 @@ def tg_buttons(cid, text, rows):
 def oo_menu(cid):
     tg_buttons(cid, "اختر من القائمة الرئيسية 👇🏻", [
         ["🛒 العروض المتوفرة", "🎁 الهدية اليومية"],
+        ["🎁 التحقق من الصناديق", "📦 فتح الصندوق"],
         ["👻 تفعيل Snapchat", "🚪 خروج"]
     ])
 
 def oo_offers_menu(cid):
     tg_buttons(cid, "🛒 العروض المتوفرة والتفعيل:", [
         ["📶 2G (24h) - 50دج", "⚡ 10G (3 أيام) - 190دج"],
-        ["🎁 300G (8h) - 300دج", "🎁 الهدية اليومية"],
-        ["👻 تفعيل Snapchat", "🔙 رجوع للقائمة"]
+        ["🎁 300G (8h) - 300دج", "📶 1G - 20دج"],
+        ["🎁 الهدية اليومية", "🎁 التحقق من الصناديق"],
+        ["📦 فتح الصندوق", "👻 تفعيل Snapchat"],
+        ["🔙 رجوع للقائمة"]
     ])
 
 def oo_do_activation(cid, user, bundle_code, name_ar):
@@ -500,6 +525,41 @@ def oo_do_daily_gift(cid, user):
     else:
         err = res.get('error') if isinstance(res, dict) else "فشل العملية"
         tg_buttons(cid, f"❌ <b>فشل استلام الهدية:</b>\n{err}", [["🔙 رجوع للقائمة"]])
+
+def oo_do_check_boxes(cid, user):
+    m = user.get("msisdn", "")
+    tg_send(cid, "⏳ جاري التحقق من الصناديق المتاحة...")
+    res = oo_call_refresh(cid, oo_check_power_snake_boxes, m, user)
+    if isinstance(res, dict) and res.get("success"):
+        j = res.get("json")
+        tg_buttons(cid, f"🎁 <b>نتيجة التحقق من الصناديق:</b>\n<code>{json.dumps(j, indent=2, ensure_ascii=False)[:350]}</code>", [["🔙 رجوع للقائمة"]])
+    else:
+        tg_buttons(cid, "❌ لم يتم العثور على صناديق متاحة حالياً.", [["🔙 رجوع للقائمة"]])
+
+def oo_do_redeem_box(cid, user):
+    m = user.get("msisdn", "")
+    tg_send(cid, "⏳ جاري محاولة فتح الصندوق واستلام الهدية...")
+    # هنا كمثال نبحث أولاً عن ID الصندوق المتاح ثم نفتحه، أو نستخدم معرف افتراضي إن وجد
+    check = oo_call_refresh(cid, oo_check_power_snake_boxes, m, user)
+    if isinstance(check, dict) and check.get("success"):
+        j_data = check.get("json")
+        box_id = None
+        if isinstance(j_data, list) and len(j_data) > 0:
+            box_id = j_data[0].get("id") or j_data[0].get("uuid")
+        elif isinstance(j_data, dict):
+            items = j_data.get("data") or j_data.get("result") or []
+            if items and isinstance(items, list):
+                box_id = items[0].get("id") or items[0].get("uuid")
+        
+        if not box_id:
+            # إذا لم يتم العثور على ID محدد، نرسل طلب عام أو نعلم المستخدم
+            box_id = "default"
+        
+        res = oo_call_refresh(cid, oo_redeem_power_snake_box, m, user, box_id)
+        if isinstance(res, dict) and res.get("success"):
+            tg_buttons(cid, "🎉 <b>تم فتح الصندوق بنجاح! 📦✨</b>", [["🔙 رجوع للقائمة"]])
+            return
+    tg_buttons(cid, "❌ <b>فشل فتح الصندوق:</b> لا توجد صناديق متاحة لفتحها حالياً.", [["🔙 رجوع للقائمة"]])
 
 def handle(cid, text):
     try:
@@ -576,11 +636,14 @@ def handle(cid, text):
 
         if text == "🛒 العروض المتوفرة":      return oo_offers_menu(cid)
         if text == "🎁 الهدية اليومية":      return threading.Thread(target=oo_do_daily_gift, args=(cid, user), daemon=True).start()
+        if text == "🎁 التحقق من الصناديق":  return threading.Thread(target=oo_do_check_boxes, args=(cid, user), daemon=True).start()
+        if text == "📦 فتح الصندوق":         return threading.Thread(target=oo_do_redeem_box, args=(cid, user), daemon=True).start()
         if text == "👻 تفعيل Snapchat":      return threading.Thread(target=oo_do_snapchat, args=(cid, user), daemon=True).start()
         
         if text == "📶 2G (24h) - 50دج":      return threading.Thread(target=oo_do_activation, args=(cid, user, "2G_24H", "عرض 2G (24h) - 50دج"), daemon=True).start()
         if text == "⚡ 10G (3 أيام) - 190دج":  return threading.Thread(target=oo_do_activation, args=(cid, user, "10G_3DAYS", "عرض 10G (3 أيام) - 190دج"), daemon=True).start()
         if text == "🎁 300G (8h) - 300دج":    return threading.Thread(target=oo_do_activation, args=(cid, user, "300G_00_08", "عرض 300G (8h) - 300دج"), daemon=True).start()
+        if text == "📶 1G - 20دج":           return threading.Thread(target=oo_do_activation, args=(cid, user, "1G_20DA", "عرض 1G - 20دج"), daemon=True).start()
 
         if text == "🚪 خروج":
             oo_delete_user(cid); oo_clear_session(cid)
