@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO,
                     datefmt="%H:%M:%S")
 logger = logging.getLogger("ooredoo_bot")
 
-# توكن البوت الذي أرسلته
+# توكن البوت الخاص بك
 TELEGRAM_BOT_TOKEN = "9153869404:AAGI0mkSrZKoF7Ukp6nkKFHyyhZwvtutxHk"
 TELEGRAM_API  = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 
@@ -350,16 +350,19 @@ def oo_buy_cvm(msisdn, user, bundle_code):
     body_txt = (r.get("body") or "").strip()
     j_res = r.get("json")
 
-    debug_info = f"<b>Code:</b> <code>{code}</code>\n"
+    debug_info = f"Code: {code}\n"
     if j_res:
-        debug_info += f"<b>JSON:</b>\n<code>{json.dumps(j_res, indent=2, ensure_ascii=False)[:350]}</code>"
+        debug_info += f"JSON:\n{json.dumps(j_res, indent=2, ensure_ascii=False)}"
     else:
-        debug_info += f"<b>Body:</b>\n<code>{body_txt[:300] if body_txt else 'Empty Body'}</code>"
+        debug_info += f"Body:\n{body_txt if body_txt else 'Empty Body'}"
+
+    # طباعة التفاصيل الكاملة في الـ Termux للبوت
+    logger.info(f"\n[DEBUG BUNDLE PURCHASE RESPONSE]\n{debug_info}")
 
     if code in (200, 201):
-        return {"success": True, "debug": debug_info}
+        return {"success": True}
     else:
-        return {"error": f"فشل التفعيل (HTTP Status: {code})\n\n{debug_info}"}
+        return {"error": f"فشل التفعيل (HTTP Status: {code})"}
 
 def oo_apply_snapchat(msisdn, user):
     h = oo_authed_h(msisdn, user.get("access_token"), {
@@ -375,16 +378,18 @@ def oo_apply_snapchat(msisdn, user):
     body_txt = (r.get("body") or "").strip()
     j_res = r.get("json")
     
-    debug_info = f"<b>Code:</b> <code>{code}</code>\n"
+    debug_info = f"Code: {code}\n"
     if j_res:
-        debug_info += f"<b>JSON:</b>\n<code>{json.dumps(j_res, indent=2, ensure_ascii=False)[:350]}</code>"
+        debug_info += f"JSON:\n{json.dumps(j_res, indent=2, ensure_ascii=False)}"
     else:
-        debug_info += f"<b>Body:</b>\n<code>{body_txt[:300] if body_txt else 'Empty Body'}</code>"
+        debug_info += f"Body:\n{body_txt if body_txt else 'Empty Body'}"
+
+    logger.info(f"\n[DEBUG SNAPCHAT RESPONSE]\n{debug_info}")
 
     if code in (200, 201):
-        return {"success": True, "debug": debug_info}
+        return {"success": True}
         
-    return {"error": f"💰 فشل الطلب (كود: {code})\n\n{debug_info}"}
+    return {"error": f"💰 فشل الطلب (كود: {code})"}
 
 def oo_claim_daily_gift(msisdn, user):
     dev = oo_get_device(None)
@@ -423,6 +428,8 @@ def oo_claim_daily_gift(msisdn, user):
     code = r_play["code"]
     body_txt = r_play.get("body") or ""
     body_lower = body_txt.lower()
+
+    logger.info(f"\n[DEBUG DAILY GIFT RESPONSE] Code: {code}\nBody: {body_txt}")
     
     if code in (200, 201):
         if "already" in body_lower or "deja" in body_lower or "played" in body_lower:
@@ -487,8 +494,7 @@ def oo_do_activation(cid, user, bundle_code, name_ar):
     tg_send(cid, f"⏳ جاري تفعيل {name_ar}...")
     res = oo_buy_cvm(m, user, bundle_code)
     if res.get("success"):
-        dbg = res.get("debug", "")
-        tg_buttons(cid, f"🎉 <b>نتيجة الطلب ({name_ar}):</b>\n📱 <b>الرقم:</b> <code>{mask_phone(m)}</code>\n\n🔍 <b>تفاصيل الاستجابة:</b>\n{dbg}", [["🔙 رجوع للقائمة"]])
+        tg_buttons(cid, f"🎉 <b>مبروك! تم تفعيل ({name_ar}) بنجاح 🥳✨</b>\n📱 <b>الرقم:</b> <code>{mask_phone(m)}</code>\n\n🚀 استمتع بالعرض الجديد!", [["🔙 رجوع للقائمة"]])
     else:
         tg_buttons(cid, f"❌ <b>فشل التفعيل:</b>\n{res.get('error')}", [["🔙 رجوع للقائمة"]])
 
@@ -497,8 +503,7 @@ def oo_do_snapchat(cid, user):
     tg_send(cid, f"⏳ جاري تفعيل عرض Snapchat المجاني...")
     res = oo_apply_snapchat(m, user)
     if res.get("success"):
-        dbg = res.get("debug", "")
-        tg_buttons(cid, f"🎉 <b>تم تفعيل Snapchat بنجاح 🥳</b>\n📱 <b>الرقم:</b> <code>{mask_phone(m)}</code>\n\n🔍 <b>تفاصيل الاستجابة:</b>\n{dbg}", [["🔙 رجوع للقائمة"]])
+        tg_buttons(cid, f"🎉 <b>تم تفعيل Snapchat بنجاح مبروك عليك 🥳👻</b>\n📱 <b>الرقم:</b> <code>{mask_phone(m)}</code>", [["🔙 رجوع للقائمة"]])
     else:
         tg_buttons(cid, f"❌ <b>فشل تفعيل Snapchat:</b>\n{res.get('error')}", [["🔙 رجوع للقائمة"]])
 
@@ -507,7 +512,7 @@ def oo_do_daily_gift(cid, user):
     tg_send(cid, f"⏳ جاري جلب الهدية اليومية...")
     res = oo_call_refresh(cid, oo_claim_daily_gift, m, user)
     if isinstance(res, dict) and res.get("success"):
-        tg_buttons(cid, f"🎉 <b>مبروك! تم استلام الهدية اليومية بنجاح 🎁</b>\n📱 <b>الرقم:</b> <code>{mask_phone(m)}</code>", [["🔙 رجوع للقائمة"]])
+        tg_buttons(cid, f"🎉 <b>مبروك! تم استلام الهدية اليومية بنجاح 🎁🔥</b>\n📱 <b>الرقم:</b> <code>{mask_phone(m)}</code>", [["🔙 رجوع للقائمة"]])
     else:
         err = res.get('error') if isinstance(res, dict) else "فشل العملية"
         tg_buttons(cid, f"❌ <b>فشل استلام الهدية:</b>\n{err}", [["🔙 رجوع للقائمة"]])
@@ -541,7 +546,7 @@ def oo_do_redeem_box(cid, user):
         
         res = oo_call_refresh(cid, oo_redeem_power_snake_box, m, user, box_id)
         if isinstance(res, dict) and res.get("success"):
-            tg_buttons(cid, "🎉 <b>تم فتح الصندوق بنجاح! 📦✨</b>", [["🔙 رجوع للقائمة"]])
+            tg_buttons(cid, "🎉 <b>تم فتح الصندوق بنجاح! مبروك عليك الهدية 📦✨</b>", [["🔙 رجوع للقائمة"]])
             return
     tg_buttons(cid, "❌ <b>فشل فتح الصندوق:</b> لا توجد صناديق متاحة لفتحها حالياً.", [["🔙 رجوع للقائمة"]])
 
