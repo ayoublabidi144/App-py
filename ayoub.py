@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Ooredoo Telegram Bot — Full Working Version with Real Requests
+Ooredoo Telegram Bot — Full OTP & Session Version with Account Management
 """
 
 import json
@@ -27,15 +27,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ooredoo_bot")
 
-# توكن البوت الخاص بك
 TELEGRAM_BOT_TOKEN = "9153869404:AAGI0mkSrZKoF7Ukp6nkKFHyyhZwvtutxHk"
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 DATA_FILE = Path(os.getenv("BOT_DATA_FILE", "bot_data.json"))
 REQUEST_TIMEOUT = (5, 20)
 
 OOREDOO_BFF = "https://apis.ooredoo.dz/api/ooredoo-bff"
+OOREDOO_AUTH = "https://apis.ooredoo.dz/api/auth/realms/myooredoo/protocol/openid-connect/token"
+OOREDOO_CLIENT_ID = "myooredoo-app"
 
-# جلسة HTTP موحدة ومستقرة
 _session = requests.Session()
 _adapter = HTTPAdapter(
     pool_connections=50,
@@ -44,7 +44,6 @@ _adapter = HTTPAdapter(
 )
 _session.mount("https://", _adapter)
 
-# ---------------- إدارة البيانات والذاكرة ----------------
 _lock = threading.Lock()
 _save_lock = threading.Lock()
 _users = {}
@@ -97,10 +96,12 @@ def mask_phone(phone):
     if not phone:
         return "—"
     s = str(phone).strip()
+    if s.startswith("213") and len(s) == 12:
+        s = "0" + s[3:]
     return s[:2] + "x" * (len(s) - 4) + s[-2:] if len(s) >= 8 else s
 
 
-# ---------------- دوال التواصل مع تليجرام ----------------
+# ---------------- دوال تليجرام ----------------
 def tg_request(method, **kwargs):
     try:
         r = _session.post(
@@ -131,11 +132,60 @@ def tg_send(cid, text, rows=None):
     return tg_request("sendMessage", **payload)
 
 
-# ---------------- التحقق والاتصال بخوادم أورييدو ----------------
+# ---------------- المصادقة والتحقق (OTP) ----------------
+def oo_send_otp(msisdn):
+    try:
+        headers = {
+            "User-Agent": "Dart/3.11 (dart:io)",
+            "Accept-Encoding": "gzip",
+            "x-msisdn": msisdn,
+            "x-platform-origin": "mobile-android",
+            "platform": "android",
+            "x-version": "1.5.19",
+        }
+        r = _session.post(f"{OOREDOO_BFF}/checkpoint/token", headers=headers, data="{}", timeout=8, verify=False)
+        if r.status_code in (200, 201):
+            nonce = r.headers.get("x-nonce-id")
+            chronos = r.headers.get("x-chronos-id")
+            if nonce and chronos:
+                auth_headers = {
+                    "User-Agent": "Dart/3.11 (dart:io)",
+                    "x-msisdn": msisdn,
+                    "x-nonce-id": nonce,
+                    "x-chronos-id": chronos,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                }
+                auth_data = {"client_id": OOREDOO_CLIENT_ID, "grant_type": "password", "username": msisdn}
+                r_auth = _session.post(OOREDOO_AUTH, headers=auth_headers, data=auth_data, timeout=8, verify=False)
+                if r_auth.status_code in (200, 401, 403):
+                    return {"ok": True, "nonce": nonce, "chronos": chronos}
+        return {"error": "فشل إرسال الرمز"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def oo_verify_otp(msisdn, otp, nonce, chronos):
+    try:
+        headers = {
+            "User-Agent": "Dart/3.11 (dart:io)",
+            "x-msisdn": msisdn,
+            "x-nonce-id": nonce,
+            "x-chronos-id": chronos,
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+        data = {"client_id": OOREDOO_CLIENT_ID, "grant_type": "password", "username": msisdn, "otp": otp}
+        r = _session.post(OOREDOO_AUTH, headers=headers, data=data, timeout=8, verify=False)
+        if r.status_code == 200:
+            res = r.json()
+            if "access_token" in res:
+                return {"access_token": res["access_token"], "refresh_token": res.get("refresh_token", "")}
+        return "wrong_otp"
+    except:
+        return False
+
+
+# ---------------- تنفيذ الطلبات الفعلي ----------------
 def validate_provider_response(response_data, raw_text):
-    """
-    التحقق الصارم من استجابة الخادم لمنع التفعيلات الوهمية
-    """
     if not raw_text or not raw_text.strip():
         return False, "استجابة فارغة أو غير صالحة من الخادم (Empty Body)."
 
@@ -152,14 +202,11 @@ def validate_provider_response(response_data, raw_text):
     return False, f"رد غير متوقع من السيرفر: {raw_text[:150]}"
 
 
-def execute_ooredoo_request(endpoint_path, phone, payload_data=None):
-    """
-    إرسال الطلب الفعلي إلى خوادم أورييدو
-    """
+def execute_ooredoo_request(endpoint_path, phone, token, payload_data=None):
     url = f"{OOREDOO_BFF}/{endpoint_path}"
     headers = {
-        "User-Agent": "Dart/3.11 (dart:io)",
-        "Accept-Encoding": "gzip",
+        "User-Agent": "Mozilla/5.0",
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json; charset=utf-8",
         "x-msisdn": phone,
     }
@@ -178,13 +225,15 @@ def execute_ooredoo_request(endpoint_path, phone, payload_data=None):
 
         if r.status_code in (200, 201):
             return validate_provider_response(json_data, body_text)
+        elif r.status_code == 401:
+            return False, "انتهت صلاحية جلسة الحساب (رمز التوكن غير صالح). يرجى إعادة إدخال الرقم."
         else:
             return False, f"فشل الطلب (HTTP Status: {r.status_code})"
     except Exception as e:
         return False, f"خطأ في الاتصال بالشبكة: {str(e)}"
 
 
-def handle_ooredoo_action(operation_code, phone):
+def handle_ooredoo_action(operation_code, phone, token):
     if operation_code == "1G_20DA":
         payload = {
             "bundleCode": "1G_20DA",
@@ -193,21 +242,21 @@ def handle_ooredoo_action(operation_code, phone):
             "msisdn": phone,
             "autoRenewal": False
         }
-        return execute_ooredoo_request("cvm/dynamic-bundle-purchase", phone, payload)
+        return execute_ooredoo_request("cvm/dynamic-bundle-purchase", phone, token, payload)
 
     elif operation_code == "SNAPCHAT":
-        return execute_ooredoo_request("snap-chat/apply", phone, {})
+        return execute_ooredoo_request("snap-chat/apply", phone, token, {})
 
     elif operation_code == "DAILY_GIFT":
-        return execute_ooredoo_request("gamification/play", phone, {})
+        return execute_ooredoo_request("gamification/play", phone, token, {})
 
     elif operation_code == "BOXES":
-        return execute_ooredoo_request("gamification/power-snake?status=AVAILABLE", phone, None)
+        return execute_ooredoo_request("gamification/power-snake?status=AVAILABLE", phone, token, None)
 
     return False, "عملية غير معروفة."
 
 
-# ---------------- واجهة المستخدم والقوائم ----------------
+# ---------------- واجهة القوائم ----------------
 def main_menu(cid, phone):
     tg_send(
         cid,
@@ -215,18 +264,33 @@ def main_menu(cid, phone):
         [
             ["📶 1G - 20DA", "👻 تفعيل Snapchat"],
             ["🎁 الهدية اليومية", "📦 الصناديق"],
-            ["ℹ️ معلومات النظام", "🚪 خروج"],
+            ["⚙️ إدارة الحساب", "🚪 تسجيل خروج"],
         ],
     )
 
 
-def execute_service(cid, phone, operation_code, title):
+def account_menu(cid, phone):
+    tg_send(
+        cid,
+        f"⚙️ <b>إدارة الحساب المسجل:</b> <code>{mask_phone(phone)}</code>\nاختر الإجراء المناسب:",
+        [
+            ["🔄 تغيير أو إضافة رقم آخر"],
+            ["🗑️ حذف الرقم الحالي من البوت"],
+            ["🔙 رجوع للقائمة"],
+        ],
+    )
+
+
+def execute_service(cid, user, operation_code, title):
     wait = check_cooldown(cid, seconds=10)
     if wait > 0:
         return tg_send(cid, f"⚠️ يرجى الانتظار <b>{wait} ثانية</b> قبل إرسال طلب جديد.")
 
+    phone = user.get("phone")
+    token = user.get("access_token")
+
     tg_send(cid, f"⏳ جاري إرسال الطلب وتنفيذ <b>{title}</b>...")
-    success, message = handle_ooredoo_action(operation_code, phone)
+    success, message = handle_ooredoo_action(operation_code, phone, token)
 
     if success:
         tg_send(
@@ -251,69 +315,106 @@ def handle_message(cid, text):
         user = dict(_users[cid]) if cid in _users else None
         sess = dict(_sessions.get(cid, {}))
 
+    state = sess.get("state", "")
+
     if text == "/start":
         with _lock:
             _sessions.pop(cid, None)
-        if user and user.get("phone"):
+        if user and user.get("access_token"):
             return main_menu(cid, user["phone"])
         with _lock:
             _sessions[cid] = {"state": "awaiting_phone"}
         return tg_send(cid, "👋 مرحباً بك في بوت أورييدو الاحترافي 🇩🇿\nأرسل رقم هاتف Ooredoo الخاص بك (05XXXXXXXX) للمتابعة:")
 
-    if sess.get("state") == "awaiting_phone":
+    if state == "awaiting_phone":
         digits = "".join(c for c in text if c.isdigit())
         if not re.match(r"^05\d{8}$", digits):
             return tg_send(cid, "❌ صيغة الرقم غير صحيحة. أرسل رقماً يبدأ بـ 05 (مثال: 0550123456):")
         
         msisdn = "213" + digits[1:]
+        tg_send(cid, "⏳ جاري إرسال رمز التحقق (OTP) إلى هاتفك...")
+        
+        res = oo_send_otp(msisdn)
+        if res.get("ok"):
+            with _lock:
+                _sessions[cid] = {
+                    "state": "awaiting_otp",
+                    "msisdn": msisdn,
+                    "nonce": res.get("nonce"),
+                    "chronos": res.get("chronos"),
+                }
+            return tg_send(cid, "✅ تم إرسال الرمز بنجاح.\nأرسل رمز التحقق (OTP) المكون من 6 أرقام هنا:")
+        else:
+            return tg_send(cid, "⚠️ فشل إرسال الرمز، تأكد من الرقم أو حاول لاحقاً.")
+
+    if state == "awaiting_otp":
+        if not text.isdigit() or len(text) != 6:
+            return tg_send(cid, "❌ رمز OTP يجب أن يكون 6 أرقام صحيحة. أعد إرساله:")
+        
+        msisdn = sess.get("msisdn")
+        nonce = sess.get("nonce")
+        chronos = sess.get("chronos")
+
+        tg_send(cid, "⏳ جاري التحقق من الرمز وتوليد الجلسة...")
+        verify_res = oo_verify_otp(msisdn, text, nonce, chronos)
+
+        if verify_res == "wrong_otp":
+            return tg_send(cid, "❌ الرمز خاطئ. تأكد من الرمز وأعد إرساله:")
+        if not verify_res:
+            return tg_send(cid, "❌ عذراً،فشل الاتصال بخادم أورييدو للتحقق من الرمز.")
+
         with _lock:
-            _users[cid] = {"phone": msisdn}
+            _users[cid] = {"phone": msisdn, **verify_res}
             _sessions.pop(cid, None)
         save_data()
+
+        tg_send(cid, "🎉 تم تسجيل الدخول وحفظ الجلسة بنجاح!")
         return main_menu(cid, msisdn)
 
-    if not user or not user.get("phone"):
+    if not user or not user.get("access_token"):
         with _lock:
             _sessions[cid] = {"state": "awaiting_phone"}
         return tg_send(cid, "📱 يرجى إدخال رقم هاتفك أولاً (05XXXXXXXX):")
 
     phone = user["phone"]
 
+    # أزرار إدارة الحساب
+    if text == "⚙️ إدارة الحساب":
+        return account_menu(cid, phone)
+
+    if text == "🔄 تغيير أو إضافة رقم آخر" or text == "🗑️ حذف الرقم الحالي من البوت":
+        with _lock:
+            _users.pop(cid, None)
+            _sessions[cid] = {"state": "awaiting_phone"}
+        save_data()
+        return tg_send(cid, "🗑️ تم حذف الرقم بنجاح.\n\n📱 أرسل رقم هاتف Ooredoo الجديد (05XXXXXXXX):")
+
     if text == "📶 1G - 20DA":
         return threading.Thread(
-            target=execute_service, args=(cid, phone, "1G_20DA", "عرض 1G - 20DA"), daemon=True
+            target=execute_service, args=(cid, user, "1G_20DA", "عرض 1G - 20DA"), daemon=True
         ).start()
 
     if text == "👻 تفعيل Snapchat":
         return threading.Thread(
-            target=execute_service, args=(cid, phone, "SNAPCHAT", "عرض Snapchat"), daemon=True
+            target=execute_service, args=(cid, user, "SNAPCHAT", "عرض Snapchat"), daemon=True
         ).start()
 
     if text == "🎁 الهدية اليومية":
         return threading.Thread(
-            target=execute_service, args=(cid, phone, "DAILY_GIFT", "الهدية اليومية"), daemon=True
+            target=execute_service, args=(cid, user, "DAILY_GIFT", "الهدية اليومية"), daemon=True
         ).start()
 
     if text == "📦 الصناديق":
         return threading.Thread(
-            target=execute_service, args=(cid, phone, "BOXES", "الصناديق"), daemon=True
+            target=execute_service, args=(cid, user, "BOXES", "الصناديق"), daemon=True
         ).start()
 
-    if text == "ℹ️ معلومات النظام":
-        return tg_send(
-            cid,
-            "ℹ️ <b>آلية العمل:</b>\n"
-            "• يفحص البوت الرد القادم من خادم أورييدو بدقة.\n"
-            "• إذا كان الرد فارغاً (`Empty Body`) أو غير مؤهل، يتم منع التفعيل الوهمي فوراً.",
-            [["🔙 رجوع للقائمة"]],
-        )
-
-    if text == "🚪 خروج":
+    if text == "🚪 تسجيل خروج":
         with _lock:
             _users.pop(cid, None)
             _sessions.pop(cid, None)
         save_data()
-        return tg_send(cid, "✅ تم مسح جلستك بنجاح. أرسل /start للبدء من جديد.")
+        return tg_send(cid, "✅ تم تسجيل الخروج وحذف بياناتك بنجاح. أرسل /start للبدء من جديد.")
 
     if text == "🔙 رجوع للقائمة":
         return main_menu(cid, phone)
@@ -321,7 +422,7 @@ def handle_message(cid, text):
     main_menu(cid, phone)
 
 
-# ---------------- حلقة التشغيل والاستقبال ----------------
+# ---------------- التشغيل الرئيسي ----------------
 def polling_loop():
     logger.info("🚀 تم تشغيل البوت بنجاح...")
     tg_request("deleteWebhook", drop_pending_updates=True)
